@@ -9,3 +9,9 @@ commands:
     description: 'LogBlock commands.'
     usage: 'Usage: /<command> help'
     aliases: []
+  lt:
+    description: Alias for /lb assigntool
+    usage: /<command>
+  ltb:
+    description: Alias for /lb assignblock
+    usage: /<command>

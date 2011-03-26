@@ -7,11 +7,14 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.sk89q.worldedit.blocks.ItemType;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -20,18 +23,11 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.Event.Type;
-import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.block.BlockBurnEvent;
-import org.bukkit.event.block.BlockInteractEvent;
-import org.bukkit.event.block.BlockListener;
-import org.bukkit.event.block.BlockPlaceEvent;
-import org.bukkit.event.block.BlockRightClickEvent;
-import org.bukkit.event.block.LeavesDecayEvent;
-import org.bukkit.event.block.SignChangeEvent;
+import org.bukkit.event.block.*;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityListener;
 import org.bukkit.event.player.PlayerEvent;
-import org.bukkit.event.player.PlayerItemEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerListener;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
@@ -49,6 +45,8 @@ public class LogBlock extends JavaPlugin
 	static Logger log;
 	private Consumer consumer = null;
 	private LinkedBlockingQueue<BlockRow> bqueue = new LinkedBlockingQueue<BlockRow>();
+    private Map<Player, Integer> lookupToolMap;
+    private Map<Player, Integer> lookupBlockMap;
 	
 	@Override
 	public void onEnable() {
@@ -83,21 +81,23 @@ public class LogBlock extends JavaPlugin
 		}
 		if (Config.keepLogDays >= 0)
 			new Thread(new ClearLog(getConnection())).start();
+        lookupToolMap = new HashMap<Player, Integer>();
+        lookupBlockMap = new HashMap<Player, Integer>();
 		LBBlockListener lbBlockListener = new LBBlockListener();
 		LBPlayerListener lbPlayerListener = new LBPlayerListener();
 		PluginManager pm = getServer().getPluginManager();
-		pm.registerEvent(Type.PLAYER_ITEM, lbPlayerListener, Event.Priority.Monitor, this);
+		// pm.registerEvent(Type.PLAYER_ITEM, lbPlayerListener, Event.Priority.Monitor, this);
 		pm.registerEvent(Type.PLAYER_JOIN, lbPlayerListener, Event.Priority.Normal, this);
-		pm.registerEvent(Type.BLOCK_RIGHTCLICKED, lbBlockListener, Event.Priority.Monitor, this);
-		pm.registerEvent(Type.BLOCK_PLACED, lbBlockListener, Event.Priority.Monitor, this);
+		// pm.registerEvent(Type.BLOCK_RIGHTCLICKED, lbBlockListener, Event.Priority.Monitor, this);
+		pm.registerEvent(Type.BLOCK_PLACE, lbBlockListener, Event.Priority.Monitor, this);
 		pm.registerEvent(Type.BLOCK_BREAK, lbBlockListener, Event.Priority.Monitor, this);
 		pm.registerEvent(Type.SIGN_CHANGE, lbBlockListener, Event.Priority.Monitor, this);
 		if (Config.logFire)
 			pm.registerEvent(Type.BLOCK_BURN, lbBlockListener, Event.Priority.Monitor, this);
 		if (Config.logExplosions) 
 			pm.registerEvent(Type.ENTITY_EXPLODE, new LBEntityListener(), Event.Priority.Monitor, this);
-		if (Config.logChestAccess)
-			pm.registerEvent(Type.BLOCK_INTERACT, lbBlockListener, Event.Priority.Monitor, this);
+		// if (Config.logChestAccess)
+			pm.registerEvent(Type.PLAYER_INTERACT, lbPlayerListener, Event.Priority.Monitor, this);
 		if (Config.logLeavesDecay)
 			pm.registerEvent(Type.LEAVES_DECAY, lbBlockListener, Event.Priority.Monitor, this);
 		consumer = new Consumer();
@@ -116,8 +116,7 @@ public class LogBlock extends JavaPlugin
 	
 	@Override
 	public boolean onCommand(CommandSender sender, Command cmd, String commandLabel, String[] args)	{
-		if (!cmd.getName().equalsIgnoreCase("lb"))
-			return false;
+		if (cmd.getName().equalsIgnoreCase("lb")) {
 		if (!(sender instanceof Player)) {
 			sender.sendMessage("You aren't a player");
 			return true;
@@ -253,17 +252,78 @@ public class LogBlock extends JavaPlugin
 			} else
 				player.sendMessage(ChatColor.RED + "You aren't allowed to do this");
 		} else if (args[0].equalsIgnoreCase("help")) {
-			player.sendMessage("§dLogBlock Commands:");
-			player.sendMessage("§d/lb area <radius>");
-			player.sendMessage("§d/lb world");
-			player.sendMessage("§d/lb player [name] <radius>");
-			player.sendMessage("§d/lb block [type] <radius>");
-			player.sendMessage("§d/lb setpos <1|2>");
-			player.sendMessage("§d/lb rollback [rollback mode]");
+			player.sendMessage("Â§dLogBlock Commands:");
+			player.sendMessage("Â§d/lb area <radius>");
+			player.sendMessage("Â§d/lb world");
+			player.sendMessage("Â§d/lb player [name] <radius>");
+			player.sendMessage("Â§d/lb block [type] <radius>");
+			player.sendMessage("Â§d/lb setpos <1|2>");
+			player.sendMessage("Â§d/lb rollback [rollback mode]");
 		} else
 			player.sendMessage(ChatColor.RED + "Wrong argument. Type /lb help for help");
 		return true;
+        } else if(cmd.getName().equals("lt")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("You aren't a player");
+                return true;
+            }
+            Player player = (Player)sender;
+            assignTool(player, player.getItemInHand().getTypeId());
+            return true;
+        } else if(cmd.getName().equalsIgnoreCase("ltb")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("You aren't a player");
+                return true;
+            }
+            Player player = (Player)sender;
+            assignBlock(player, player.getItemInHand().getTypeId());
+            return true;
+        }
+        return false;
 	}
+
+    public void assignTool(Player player, Integer item)
+    {
+        if (item > 0 && item < 255) {
+            player.sendMessage(ChatColor.GOLD + "Can't bind to "+ ItemType.toName(item)+". Can't use blocks!");
+        } else if (item == 263 || item == 348) {
+            player.sendMessage(ChatColor.GOLD + "Can't bind to "+ItemType.toName(item)+". Item is nog usable!");
+        } else {
+            player.sendMessage(ChatColor.GOLD + "Lookup tool bound to "+ItemType.toName(item)+".");
+            lookupToolMap.put(player, item);
+        }
+    }
+
+    public int getAssignedTool(Player player)
+    {
+        if(lookupToolMap.containsKey(player))
+        {
+            return lookupToolMap.get(player);
+        } else {
+            return Config.toolID;
+        }
+    }
+
+    public void assignBlock(Player player, Integer blockId)
+    {
+        if (blockId > 0 && blockId < 255) {
+            lookupBlockMap.put(player, blockId);
+            // player.sendMessage(ChatColor.GOLD + "Can't bind to "+ItemType.toName(blockId)+". Can't use blocks!");
+            player.sendMessage(ChatColor.GOLD + "Lookup block bound to "+ItemType.toName(blockId)+".");
+        } else {
+            player.sendMessage(ChatColor.GOLD + "Can't bind to "+ItemType.toName(blockId)+". Can't use items!");
+        }
+    }
+
+    public int getAssignedBlock(Player player)
+    {
+        if(lookupBlockMap.containsKey(player))
+        {
+            return lookupBlockMap.get(player);
+        } else {
+            return Config.toolblockID;
+        }
+    }
 
 	private Connection getConnection()
 	{
@@ -371,21 +431,21 @@ public class LogBlock extends JavaPlugin
 			log.info("[LogBlock] Failed to queue block for " + playerName);
 	}
 	
-private boolean CheckPermission(Player player, String permission) {
-	if (Config.usePermissions)
-		return Permissions.Security.permission(player, permission);
-	else {
-		if (permission.equals("logblock.lookup"))
-			return true;
-		else if (permission.equals("logblock.me"))
-			return true;
-		else if (permission.equals("logblock.area"))
-			return player.isOp();
-		else if (permission.equals("logblock.rollback"))
-			return player.isOp();
-	}
-	return false;
-}
+    private boolean CheckPermission(Player player, String permission) {
+        if (Config.usePermissions)
+            return Permissions.Security.permission(player, permission);
+        else {
+            if (permission.equals("logblock.lookup"))
+                return true;
+            else if (permission.equals("logblock.me"))
+                return true;
+            else if (permission.equals("logblock.area"))
+                return player.isOp();
+            else if (permission.equals("logblock.rollback"))
+                return player.isOp();
+        }
+        return false;
+    }
 	
 	static int parseTimeSpec(String timespec) {
 		String[] split = timespec.split(" ");
@@ -410,31 +470,50 @@ private boolean CheckPermission(Player player, String permission) {
 
 	private class LBPlayerListener extends PlayerListener
 	{
-		public void onPlayerItem(PlayerItemEvent event) {
-			if (!event.isCancelled() && event.getBlockClicked() != null) {
-				switch (event.getMaterial()) {
-					case BUCKET:
-						queueBlock(event.getPlayer().getName(), event.getBlockClicked(), event.getBlockClicked().getTypeId(), 0, event.getBlockClicked().getData());
-						break;
-					case WATER_BUCKET:
-						queueBlock(event.getPlayer(), event.getBlockClicked().getFace(event.getBlockFace()), Material.STATIONARY_WATER.getId());
-						break;
-					case LAVA_BUCKET:
-						queueBlock(event.getPlayer(), event.getBlockClicked().getFace(event.getBlockFace()), Material.STATIONARY_LAVA.getId());
-						break;
-					case FLINT_AND_STEEL:
-						queueBlock(event.getPlayer(), event.getBlockClicked().getFace(event.getBlockFace()), Material.FIRE.getId());
-						break;
-					case SEEDS:
-						queueBlock(event.getPlayer(), event.getBlockClicked().getFace(event.getBlockFace()), Material.CROPS.getId());
-						break;
-					case WOOD_HOE:
-					case STONE_HOE:
-					case IRON_HOE:
-					case DIAMOND_HOE:
-					case GOLD_HOE:
-						queueBlock(event.getPlayer().getName(), event.getBlockClicked(), event.getBlockClicked().getTypeId(), Material.SOIL.getId(), (byte)0);
-						break;
+		public void onPlayerInteract(PlayerInteractEvent event) {
+            if(event.getAction() != Action.RIGHT_CLICK_BLOCK)
+                return;
+            
+            if (!event.isCancelled() && event.getClickedBlock().getType() == Material.CHEST)  {
+                if (event.getPlayer().getItemInHand().getTypeId() == getAssignedTool(event.getPlayer())
+                    && CheckPermission(event.getPlayer(), "logblock.lookup"))
+                {
+                    new Thread(new BlockStats(getConnection(), event.getPlayer(), event.getClickedBlock(), getTable(event.getClickedBlock()))).start();
+	    			event.setCancelled(true);
+                }
+	    		else
+                {
+                    if (Config.logChestAccess)
+	    			    queueBlock(event.getPlayer(), event.getClickedBlock(), (short)0, (byte)0, (short)0, (byte)0);
+                }
+            } else if (!event.isCancelled() && event.getClickedBlock() != null) {
+                if (event.getPlayer().getItemInHand().getTypeId()== getAssignedTool(event.getPlayer()) && CheckPermission(event.getPlayer(), "logblock.lookup"))
+				    new Thread(new BlockStats(getConnection(), event.getPlayer(), event.getClickedBlock(), getTable(event.getClickedBlock()))).start();
+                else {
+                    switch (event.getMaterial()) {
+                        case BUCKET:
+                            queueBlock(event.getPlayer().getName(), event.getClickedBlock(), event.getClickedBlock().getTypeId(), 0, event.getClickedBlock().getData());
+                            break;
+                        case WATER_BUCKET:
+                            queueBlock(event.getPlayer(), event.getClickedBlock().getFace(event.getBlockFace()), Material.STATIONARY_WATER.getId());
+                            break;
+                        case LAVA_BUCKET:
+                            queueBlock(event.getPlayer(), event.getClickedBlock().getFace(event.getBlockFace()), Material.STATIONARY_LAVA.getId());
+                            break;
+                        case FLINT_AND_STEEL:
+                            queueBlock(event.getPlayer(), event.getClickedBlock().getFace(event.getBlockFace()), Material.FIRE.getId());
+                            break;
+                        case SEEDS:
+                            queueBlock(event.getPlayer(), event.getClickedBlock().getFace(event.getBlockFace()), Material.CROPS.getId());
+                            break;
+                        case WOOD_HOE:
+                        case STONE_HOE:
+                        case IRON_HOE:
+                        case DIAMOND_HOE:
+                        case GOLD_HOE:
+                            queueBlock(event.getPlayer().getName(), event.getClickedBlock(), event.getClickedBlock().getTypeId(), Material.SOIL.getId(), (byte)0);
+                            break;
+                    }
 				}
 			}
 		}
@@ -464,14 +543,10 @@ private boolean CheckPermission(Player player, String permission) {
 
 	private class LBBlockListener extends BlockListener
 	{
-		public void onBlockRightClick(BlockRightClickEvent event) {
-			if (event.getItemInHand().getTypeId()== Config.toolID && CheckPermission(event.getPlayer(), "logblock.lookup"))
-				new Thread(new BlockStats(getConnection(), event.getPlayer(), event.getBlock(), getTable(event.getBlock()))).start();
-		}
 		
 		public void onBlockPlace(BlockPlaceEvent event) {
 			if (!event.isCancelled()) {
-				if (event.getItemInHand().getTypeId() == Config.toolblockID && CheckPermission(event.getPlayer(), "logblock.lookup")) {
+				if (event.getItemInHand().getTypeId() == getAssignedBlock(event.getPlayer()) && CheckPermission(event.getPlayer(), "logblock.lookup")) {
 					new Thread(new BlockStats(getConnection(), event.getPlayer(), event.getBlock(), getTable(event.getBlock()))).start();
 					if (Config.toolblockRemove)
 						event.setCancelled(true);
@@ -497,15 +572,6 @@ private boolean CheckPermission(Player player, String permission) {
 			if (!event.isCancelled())
 				queueBlock(Config.logFireAs, event.getBlock(), event.getBlock().getTypeId(), 0, event.getBlock().getData());
 		}
-		
-	    public void onBlockInteract(BlockInteractEvent event) {
-	    	if (!event.isCancelled() && event.isPlayer() && event.getBlock().getType() == Material.CHEST)  {
-	    		if (((Player)event.getEntity()).getItemInHand().getTypeId() == Config.toolID)
-	    			event.setCancelled(true);
-	    		else
-	    			queueBlock((Player)event.getEntity(), event.getBlock(), (short)0, (byte)0, (short)0, (byte)0);
-	    	}
-	    }
 	    
 	    public void onLeavesDecay(LeavesDecayEvent event) {
 	    	if (!event.isCancelled())

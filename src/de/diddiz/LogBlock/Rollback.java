@@ -104,7 +104,7 @@ public class Rollback implements Runnable
 			}
 		} catch (SQLException ex) {
 			LogBlock.log.log(Level.SEVERE, this.getClass().getName() + " SQL exception", ex);
-			player.sendMessage("§cError, check server logs.");
+			player.sendMessage("Â§cError, check server logs.");
 			return;
 		} finally {
 			try {
@@ -116,7 +116,7 @@ public class Rollback implements Runnable
 					conn.close();
 			} catch (SQLException ex) {
 				LogBlock.log.log(Level.SEVERE, this.getClass().getName() + " SQL exception on close", ex);
-				player.sendMessage("§cError, check server logs.");
+				player.sendMessage("Â§cError, check server logs.");
 				return;
 			}
 		}
