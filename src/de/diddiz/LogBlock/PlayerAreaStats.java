@@ -5,6 +5,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.logging.Level;
 
 import org.bukkit.ChatColor;
@@ -32,7 +35,8 @@ public class PlayerAreaStats implements Runnable
 		ResultSet rs = null;
 		try {
 			conn.setAutoCommit(false);
-			ps = conn.prepareStatement("SELECT `type`, SUM(`created`) AS `created`, SUM(`destroyed`) AS `destroyed` FROM ((SELECT `type`, count(`type`) AS `created`, 0 AS `destroyed` FROM `" + table + "` INNER JOIN `lb-players` USING (`playerid`) WHERE `playername` = ? AND x > ? AND x < ? AND z > ? AND z < ? AND `type` > 0 AND `type` != `replaced` GROUP BY `type`) UNION (SELECT `replaced` AS `type`, 0 AS `created`, count(`replaced`) AS `destroyed` FROM `" + table + "` INNER JOIN `lb-players` USING (`playerid`) WHERE `playername` = ? AND x > ? AND x < ? AND z > ? AND z < ? AND `replaced` > 0 AND `type` != `replaced` GROUP BY `replaced`)) AS t GROUP BY `type` ORDER BY SUM(`created`) + SUM(`destroyed`) ASC LIMIT 15", Statement.NO_GENERATED_KEYS);
+            List<String> lines = new ArrayList<String>();
+			ps = conn.prepareStatement("SELECT `type`, SUM(`created`) AS `created`, SUM(`destroyed`) AS `destroyed` FROM ((SELECT `type`, count(`type`) AS `created`, 0 AS `destroyed` FROM `" + table + "` INNER JOIN `lb-players` USING (`playerid`) WHERE `playername` = ? AND x > ? AND x < ? AND z > ? AND z < ? AND `type` > 0 AND `type` != `replaced` GROUP BY `type`) UNION (SELECT `replaced` AS `type`, 0 AS `created`, count(`replaced`) AS `destroyed` FROM `" + table + "` INNER JOIN `lb-players` USING (`playerid`) WHERE `playername` = ? AND x > ? AND x < ? AND z > ? AND z < ? AND `replaced` > 0 AND `type` != `replaced` GROUP BY `replaced`)) AS t GROUP BY `type` ORDER BY SUM(`created`) + SUM(`destroyed`) DESC LIMIT 15", Statement.NO_GENERATED_KEYS);
 			ps.setString(1, name);
 			ps.setInt(2, player.getLocation().getBlockX()-size);
 			ps.setInt(3, player.getLocation().getBlockX()+size);
@@ -51,8 +55,13 @@ public class PlayerAreaStats implements Runnable
 				player.sendMessage(ChatColor.GOLD + String.format("%-6s %-6s %s", "Creat", "Destr", "Block"));
 				rs.beforeFirst();
 				while (rs.next()) {
-					player.sendMessage(ChatColor.GOLD + String.format("%-6d %-6d %s", rs.getInt("created"), rs.getInt("destroyed"), Material.getMaterial(rs.getInt("type")).toString().toLowerCase().replace('_', ' ')));
+					lines.add(ChatColor.GOLD + String.format("%-6d %-6d %s", rs.getInt("created"), rs.getInt("destroyed"), Material.getMaterial(rs.getInt("type")).toString().toLowerCase().replace('_', ' ')));
 				}
+                Collections.sort(lines, Collections.reverseOrder());
+                for(String line: lines)
+                {
+                    player.sendMessage(line);
+                }
 			}
 		} catch (SQLException ex) {
 			LogBlock.log.log(Level.SEVERE, "[LogBlock PlayerAreaStats] SQL exception", ex);

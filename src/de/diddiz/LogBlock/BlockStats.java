@@ -6,6 +6,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.logging.Level;
 
 import org.bukkit.ChatColor;
@@ -43,7 +46,8 @@ public class BlockStats implements Runnable
 		SimpleDateFormat formatter = new SimpleDateFormat("MM-dd HH:mm:ss");
 		try {
 			conn.setAutoCommit(false);
-			ps = conn.prepareStatement("SELECT * FROM `" + table + "` LEFT JOIN `" + table + "-sign` USING (`id`) INNER JOIN `lb-players` USING (`playerid`) WHERE `x` = ? AND `y` = ? AND `z` = ? ORDER BY `date` ASC LIMIT 15", Statement.RETURN_GENERATED_KEYS);
+			ps = conn.prepareStatement("SELECT * FROM `" + table + "` LEFT JOIN `" + table + "-sign` USING (`id`) INNER JOIN `lb-players` USING (`playerid`) WHERE `x` = ? AND `y` = ? AND `z` = ? ORDER BY `date` DESC LIMIT 15", Statement.RETURN_GENERATED_KEYS);
+            List<String> lines = new ArrayList<String>();
 			ps.setInt(1, block.getX());
 			ps.setInt(2, block.getY());
 			ps.setInt(3, block.getZ());
@@ -61,11 +65,18 @@ public class BlockStats implements Runnable
 					msg += "created " + getMaterialName(rs.getInt("type"));
 				else
 					msg += "replaced " + getMaterialName(rs.getInt("replaced")) + " with " + getMaterialName(rs.getInt("type"));
-				player.sendMessage(ChatColor.GOLD + msg);
+				lines.add(ChatColor.GOLD + msg);
 				hist = true;
 			}
-			if (!hist)
+			if (!hist) {
 				player.sendMessage(ChatColor.DARK_AQUA + "None.");
+            } else {
+                Collections.sort(lines, Collections.reverseOrder());
+                for(String line: lines)
+                {
+                    player.sendMessage(line);
+                }
+            }
 		} catch (SQLException ex) {
 			LogBlock.log.log(Level.SEVERE, "[LogBlock BlockStats] SQL exception", ex);
 		} finally {

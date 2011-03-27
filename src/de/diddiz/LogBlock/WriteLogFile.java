@@ -37,7 +37,7 @@ public class WriteLogFile implements Runnable
 		String msg;
 		try {
 			conn.setAutoCommit(false);
-			ps = conn.prepareStatement("SELECT * FROM `" + table + "` LEFT JOIN `" + table + "-sign` USING (`id`) INNER JOIN `lb-players` USING (`playerid`) WHERE `playername` = ? ORDER BY `date` ASC");
+			ps = conn.prepareStatement("SELECT * FROM `" + table + "` LEFT JOIN `" + table + "-sign` USING (`id`) INNER JOIN `lb-players` USING (`playerid`) WHERE `playername` = ? ORDER BY `date` DESC");
 			ps.setString(1, name);
 			rs = ps.executeQuery();
 			File file = new File ("plugins/LogBlock/log/" + name + ".log");
