@@ -71,7 +71,7 @@ public class BlockStats implements Runnable
 			if (!hist) {
 				player.sendMessage(ChatColor.DARK_AQUA + "None.");
             } else {
-                Collections.sort(lines, Collections.reverseOrder());
+                Collections.reverse(lines);
                 for(String line: lines)
                 {
                     player.sendMessage(line);

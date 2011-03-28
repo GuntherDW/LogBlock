@@ -52,7 +52,7 @@ public class AreaStats implements Runnable
 				while (rs.next()) {
 					lines.add(ChatColor.GOLD + String.format("%-6d %-6d %s", rs.getInt("created"), rs.getInt("destroyed"), rs.getString("playername")));
 				}
-                Collections.sort(lines, Collections.reverseOrder());
+                Collections.reverse(lines);
                 for(String line : lines)
                 {
                     player.sendMessage(line);

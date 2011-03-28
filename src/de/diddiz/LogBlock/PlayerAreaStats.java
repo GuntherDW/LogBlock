@@ -57,7 +57,7 @@ public class PlayerAreaStats implements Runnable
 				while (rs.next()) {
 					lines.add(ChatColor.GOLD + String.format("%-6d %-6d %s", rs.getInt("created"), rs.getInt("destroyed"), Material.getMaterial(rs.getInt("type")).toString().toLowerCase().replace('_', ' ')));
 				}
-                Collections.sort(lines, Collections.reverseOrder());
+                Collections.reverse(lines);
                 for(String line: lines)
                 {
                     player.sendMessage(line);

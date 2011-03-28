@@ -20,6 +20,7 @@ public class Rollback implements Runnable
 	PreparedStatement ps = null;
 	private Player player;
 	private Connection conn = null;
+    private boolean redo = false;
 
 	Rollback(Player player, Connection conn, String name, int minutes, String table) {
 		this.player = player;
@@ -92,14 +93,40 @@ public class Rollback implements Runnable
 			return;
 		}
 	}
+
+    Rollback(Player player, Connection conn, Location loc1, Location loc2, boolean redo, int minutes, String table) {
+		this.player = player;
+		this.conn = conn;
+		try {
+			conn.setAutoCommit(false);
+			ps = conn.prepareStatement("SELECT type, data, replaced, x, y, z FROM `" + table + "` WHERE x >= ? AND x <= ? AND y >= ? AND y <= ? AND z >= ? AND z <= ? AND date > date_sub(now(), INTERVAL ? MINUTE) ORDER BY date "+(redo?"ASC":"DESC"), Statement.RETURN_GENERATED_KEYS);
+			ps.setInt(1, Math.min(loc1.getBlockX(), loc2.getBlockX()));
+			ps.setInt(2, Math.max(loc1.getBlockX(), loc2.getBlockX()));
+			ps.setInt(3, Math.min(loc1.getBlockY(), loc2.getBlockY()));
+			ps.setInt(4, Math.max(loc1.getBlockY(), loc2.getBlockY()));
+			ps.setInt(5, Math.min(loc1.getBlockZ(), loc2.getBlockZ()));
+			ps.setInt(6, Math.max(loc1.getBlockZ(), loc2.getBlockZ()));
+			ps.setInt(7, minutes);
+            this.redo = redo;
+		} catch (SQLException ex) {
+			LogBlock.log.log(Level.SEVERE, this.getClass().getName() + " SQL exception", ex);
+			player.sendMessage(ChatColor.RED + "Error, check server logs.");
+			return;
+		}
+	}
 	
 	public void run() {
 		ResultSet rs = null;
 		edits.clear();
 		try {
 			rs = ps.executeQuery();
-			while (rs.next()) {
-				Edit e = new Edit(rs.getInt("type"), rs.getInt("replaced"), rs.getByte("data"), rs.getInt("x"), rs.getInt("y"), rs.getInt("z"), player.getWorld());
+			while (rs.next())
+            {
+                Edit e;
+                if(!this.redo)
+				    e = new Edit(rs.getInt("type"), rs.getInt("replaced"), rs.getByte("data"), rs.getInt("x"), rs.getInt("y"), rs.getInt("z"), player.getWorld());
+                else
+                    e = new Edit(rs.getInt("replaced"), rs.getInt("type"), rs.getByte("data"), rs.getInt("x"), rs.getInt("y"), rs.getInt("z"), player.getWorld(), true);
 				edits.offer(e);
 			}
 		} catch (SQLException ex) {
@@ -142,6 +169,7 @@ public class Rollback implements Runnable
 		int x, y, z;
 		byte data;
 		World world;
+        boolean force;
 		
 		Edit(int type, int replaced, byte data, int x, int y, int z, World world) {
 			this.type = type;
@@ -152,6 +180,17 @@ public class Rollback implements Runnable
 			this.z = z;
 			this.world = world;
 		}
+
+        Edit(int type, int replaced, byte data, int x, int y, int z, World world, boolean force) {
+			this.type = type;
+			this.replaced = replaced;
+			this.data = data;
+			this.x = x;
+			this.y = y;
+			this.z = z;
+			this.world = world;
+            this.force = force;
+		}
 		
 		public boolean perform() {
 			if (type > 0 && type == replaced)
@@ -160,7 +199,9 @@ public class Rollback implements Runnable
 				Block block = world.getBlockAt(x, y, z);
 				if (!world.isChunkLoaded(block.getChunk()))
 					world.loadChunk(block.getChunk());
-				if (block.getTypeId() == type || (block.getTypeId() >= 8 && block.getTypeId() <= 11) || block.getTypeId() == 51 || (type == 0 && replaced == 0))
+				if(force)
+                    return block.setTypeIdAndData(replaced, data, false);
+                else if (block.getTypeId() == type || (block.getTypeId() >= 8 && block.getTypeId() <= 11) || block.getTypeId() == 51 || (type == 0 && replaced == 0))
 					return block.setTypeIdAndData(replaced, data, false);
 			} catch (Exception ex) {
 					LogBlock.log.severe("[LogBlock Rollback] " + ex.toString());
